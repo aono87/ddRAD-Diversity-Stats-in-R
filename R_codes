@@ -1,0 +1,127 @@
+####Codes for measuring Diversity Statistics: Ho, Hs, Fis, F and Tajima's D
+#Packages used:
+#Hierfstat or DartR: Basic stats. Wrapper function in DartR does same calculation with a genlight file as Hierfstat does. Calculates Ho, Hs and Fis using Nei 1987 method.
+#Poppr: Various summary statistics and diversity indices by population
+#Vcftools: Can calculate number of observed loci and the F inbreeding coefficient (method of moments) for each individual. Can also calculate site depth and Tajima's D for each population. 
+#Genepop: Calculates Fis (Weir and cockerham), 1-Qinter, 1-Qintra for each population (and locus)
+#Adegenet: Can calulate Hs (Expected heterozygosity/Gene diversity)
+
+####Hierfstat####
+library(hierfstat)
+
+#convert file from genind (Adegenet) to hierfstat format. This file has ocean basin level populations: Atlantic, Indopacific, Mediterranean
+zczc125.hfstat<-genind2hierfstat(zczc125.gi)
+
+#calculate basic stats (Ho, Hs and Fis using Nei 1987)
+zczc125.hfstat.basicstats<-basic.stats(zczc125.hfstat, diploid=TRUE)
+
+#view results. This will give basic summary statistics for each measure for each of the three defined ocean basins in the genind file. 
+summary(zczc125.hfstat.basicstats$Ho)
+summary(zczc125.hfstat.basicstats$Hs)
+summary(zczc125.hfstat.basicstats$Fis)
+
+####dartR####
+#producing same summary stats using dartR with a genlight file instead of genind converted to hierfstat file
+library(dartR)
+
+#run basic stats function (wrapper for hierfstats) for each genlight file (one ocean basin level and the two potential population level files)
+zczc125.gl.basicstats<-gl.basic.stats(zczc125.gl)
+zczc125.pop1.basicstats<-gl.basic.stats(zczc125.pop1.gl)
+zczc125.pop2.basicstats<-gl.basic.stats(zczc125.pop2.gl)
+
+#Summary statistics for each metric for ocean basin pops
+summary(zczc125.gl.basicstats$Ho)
+summary(zczc125.gl.basicstats$Hs)
+summary(zczc125.gl.basicstats$Fis)
+
+#Summary statistics for each metric for population groups 1
+summary(zczc125.pop1.basicstats$Ho)
+summary(zczc125.pop1.basicstats$Hs)
+summary(zczc125.pop1.basicstats$Fis)
+
+#Summary statistics for each metric for population gorups 2
+summary(zczc125.pop2.basicstats$Ho)
+summary(zczc125.pop2.basicstats$Hs)
+summary(zczc125.pop2.basicstats$Fis)
+
+####Poppr####
+library(poppr)
+
+#calculate summary statistics for ocean basins and populations using genind files (adegenet)
+zczc125.poppr<-poppr(zczc125.gi)
+zczc125.pop1.poppr<-poppr(zczc125.pop1.gi)
+zczc125.pop2.poppr<-poppr(zczc125.pop2.gi)
+
+####vcftools####
+#vcftools is a linux program. first need to run scripts there to get the data and then can load a summary table into r for the analysis. 
+
+#Tajima's D: once the tajima's D values are generated for each population in vcftools, export out of linux and import into R. Then can calculate summary statistics. Will need to do this for each population. 
+
+zczc125.tajima.atl<-read.table("./ocean_basins/zczc125.atl/zczc125.atl.100000.Tajima.D", header=TRUE)
+summary(zczc125.tajima.atl$TajimaD)
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# -1.6104 -0.8074 -0.5964 -0.2228  0.2050  2.4817 
+
+#Heterozygosity/F: like Tajima's D, this will first need to be calculated in vcftools and a resulting file has values for each individual. Each file has one row for each individual and the following columns: average site depth across all loci/individual, observed homozygous sites, expected homozygous sites, no sites with data, no sites across whole dataset, F. Export these files out of linux and upload into R for summary statistics. 
+
+#upload vcftools summaries into R and subset dataset for just Z. cavirostris data
+sum<-read.table("~/Dropbox/Phd/Bioinformatics/bw_ddrad/Results/R-summaries/r-working-summaries.csv", sep=",", header=TRUE)
+sum.zc<-subset(sum, sum$species=="Zcav")
+
+#population variables need to be converted to factors and characters for summaries to work
+sum.zc$ocean.basin<-as.factor(sum.zc$ocean.basin)
+sum.zc$pop1<-as.character(sum.zc$pop1)
+sum.zc$pop1<-as.factor(sum.zc$pop1)
+sum.zc$pop2<-as.character(sum.zc$pop2)
+sum.zc$pop2<-as.factor(sum.zc$pop2)
+
+#use "Psych" library to generate tables of summary statistics of F inbreeding coefficient
+library(psych)
+describeBy(sum.zc$f, sum.zc$ocean.basin, mat=TRUE, digits=3)
+describeBy(sum.zc$f, sum.zc$pop1, mat=TRUE, digits=3)
+describeBy(sum.zc$f, sum.zc$pop2, mat=TRUE, digits=3)
+
+#Calculate observed heterozygosity: 1-(observed homozygous snps/no snps per individual genotyped) and add this column to your dataframe
+obs.het.ind<-(1-sum.zc$obs.homo.snps/sum.zc$no.snps.ind)
+sum.zc<-cbind(sum.zc, obs.het.ind)
+
+#Calculate summary statistics for each population
+describeBy(sum.zc$obs.het.ind, sum.zc$ocean.basin, mat=TRUE, digits=3)
+describeBy(sum.zc$obs.het.ind, sum.zc$pop1, mat=TRUE, digits=3)
+describeBy(sum.zc$obs.het.ind, sum.zc$pop2, mat=TRUE, digits=3)
+
+####Genepop####
+#Fis and Gene diversities: Calculates for each locus as well as population. 
+library(genepop)
+
+#First you will need to convert your vcf file into a genepop file using PGD spider. once that is done, rename the individuals using text wrangler so that the first characters are the population. 
+
+#run genedivFis function for each dataset. The resulting file will be saved in your working directory and at the very bottom will have values for Fis, 1-Qinter and 1-Qintra gene diversities. 
+zczc125.gp.Fis<-genedivFis("./zczc125_genepop.txt")
+zczc125.pop1.gp.Fis<-genedivFis("./zczc125.pop1.genepop.txt")
+zczc125.pop2.gp.Fis<-genedivFis("./zczc125.pop2.genepop.txt")
+
+####Adegenet####
+#Calculate Hs for each population using genpop files (Adegenet). Can also use to calculate observed heterozygosity for each population
+
+library(adegenet)
+
+#convert genind files to genpop files
+zczc125.gp<-genind2genpop(zczc125.gi)
+zczc125.pop1.gp<-genind2genpop(zczc125.pop1.gi)
+zczc125.pop2.gp<-genind2genpop(zczc125.pop2.gi)
+
+#Calculate Hs for each population
+Hs(zczc125.gp)
+Hs(zczc125.pop1.gp)
+Hs(zczc125.pop2.gp)
+
+#use seppop and lapply to calculate observed heterozygosity for each population
+lapply(seppop(zczc125.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
+lapply(seppop(zczc125.pop1.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
+lapply(seppop(zczc125.pop2.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
+
+
+
+
+
