@@ -1,10 +1,13 @@
 ####Codes for measuring Diversity Statistics: Ho, Hs, Fis, F and Tajima's D
 #Packages used:
-#Hierfstat or DartR: Basic stats. Wrapper function in DartR does same calculation with a genlight file as Hierfstat does. Calculates Ho, Hs and Fis using Nei 1987 method.
+#Hierfstat or DartR: Basic stats. Wrapper function in DartR does same calculation with a genlight file as Hierfstat does with a genind. 
+#Calculates Ho, Hs and Fis using Nei 1987 method.
+#Hierfstat: Calculate 95% confidence intervals around Fis values (weir and cockerham) for populations
 #Poppr: Various summary statistics and diversity indices by population
 #Vcftools: Can calculate number of observed loci and the F inbreeding coefficient (method of moments) for each individual. Can also calculate site depth and Tajima's D for each population. 
 #Genepop: Calculates Fis (Weir and cockerham), 1-Qinter, 1-Qintra for each population (and locus)
-#Adegenet: Can calulate Hs (Expected heterozygosity/Gene diversity)
+#Adegenet: Can calulate Hs (Expected heterozygosity/Gene diversity) and compare Hs values between two populations using monte-carlo test. 
+#rcompanion: Useful tool to calculate groupwise means and bootstrap values for confidence intervals. 
 
 ####Hierfstat####
 library(hierfstat)
@@ -19,6 +22,19 @@ zczc125.hfstat.basicstats<-basic.stats(zczc125.hfstat, diploid=TRUE)
 summary(zczc125.hfstat.basicstats$Ho)
 summary(zczc125.hfstat.basicstats$Hs)
 summary(zczc125.hfstat.basicstats$Fis)
+
+#make new files for each statistic. Each file will also have population info. 
+zczc125.hfstat.ho<-zczc125.hfstat.basicstats$Ho
+zczc125.hfstat.hs<-zczc125.hfstat.basicstats$Hs
+zczc125.hfstat.fis<-zczc125.hfstat.basicstats$Fis
+
+#calculating 95% confidence intervals around Weir and cockerham Fis values for each population. See notes
+#in Hierfstat paper about how strata should be added. I didnt do what they did, just included the actual 
+#populaton names ("Atlantic", "Indopacific", and "Mediterranean"). In the basic.stats output, the actual
+#population name is returned, however in the boot.ppfis output, the populations are alphabetised and returned 
+#as a number (1,2,3)
+zczc125.bootppfis<-boot.ppfis(zczc125.hfstat, nboot=100)
+zczc125.bootppfis$fis
 
 ####dartR####
 #producing same summary stats using dartR with a genlight file instead of genind converted to hierfstat file
@@ -44,6 +60,9 @@ summary(zczc125.pop2.basicstats$Ho)
 summary(zczc125.pop2.basicstats$Hs)
 summary(zczc125.pop2.basicstats$Fis)
 
+#NOTE: dartR can also calculate 95% confidence intervals of Fst values from a genlight file with gl.fst.pop()
+#zczc125.boot.fst<-gl.fst.pop(zczc125.gl, nboots=100, percent=95, nclusters=1)
+
 ####Poppr####
 library(poppr)
 
@@ -53,16 +72,24 @@ zczc125.pop1.poppr<-poppr(zczc125.pop1.gi)
 zczc125.pop2.poppr<-poppr(zczc125.pop2.gi)
 
 ####vcftools####
-#vcftools is a linux program. first need to run scripts there to get the data and then can load a summary table into r for the analysis. 
+#vcftools is a linux program. first need to run scripts there to get the data and then can load a 
+#summary table into r for the analysis. 
 
-#Tajima's D: once the tajima's D values are generated for each population in vcftools, export out of linux and import into R. Then can calculate summary statistics. Will need to do this for each population. 
+#Tajima's D: once the tajima's D values are generated for each population in vcftools, export out of 
+#linux and import into R. Then can calculate summary statistics. Will need to do this for each population. 
 
 zczc125.tajima.atl<-read.table("./ocean_basins/zczc125.atl/zczc125.atl.100000.Tajima.D", header=TRUE)
 summary(zczc125.tajima.atl$TajimaD)
 # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 # -1.6104 -0.8074 -0.5964 -0.2228  0.2050  2.4817 
 
-#Heterozygosity/F: like Tajima's D, this will first need to be calculated in vcftools and a resulting file has values for each individual. Each file has one row for each individual and the following columns: average site depth across all loci/individual, observed homozygous sites, expected homozygous sites, no sites with data, no sites across whole dataset, F. Export these files out of linux and upload into R for summary statistics. 
+#Heterozygosity/F: like Tajima's D, this will first need to be calculated in vcftools and a resulting 
+#file has values for each individual. Each file has one row for each individual and the following 
+#columns: average site depth across all loci/individual, observed homozygous sites, expected homozygous 
+#sites, no sites with data, no sites across whole dataset, F (inbreeding coefficient). Export 
+#these files out of linux and upload into R for summary statistics. F in this program is calculated as:
+# F = (O-E)/(N-E). O=observed number of homozygotes, E=expected number of homozygotes, N=number of 
+#genotyped loci. 
 
 #upload vcftools summaries into R and subset dataset for just Z. cavirostris data
 sum<-read.table("~/Dropbox/Phd/Bioinformatics/bw_ddrad/Results/R-summaries/r-working-summaries.csv", sep=",", header=TRUE)
@@ -81,7 +108,8 @@ describeBy(sum.zc$f, sum.zc$ocean.basin, mat=TRUE, digits=3)
 describeBy(sum.zc$f, sum.zc$pop1, mat=TRUE, digits=3)
 describeBy(sum.zc$f, sum.zc$pop2, mat=TRUE, digits=3)
 
-#Calculate observed heterozygosity: 1-(observed homozygous snps/no snps per individual genotyped) and add this column to your dataframe
+#Calculate observed heterozygosity: 1-(observed homozygous snps/no snps per individual genotyped) and 
+#add this column to your dataframe
 obs.het.ind<-(1-sum.zc$obs.homo.snps/sum.zc$no.snps.ind)
 sum.zc<-cbind(sum.zc, obs.het.ind)
 
@@ -94,15 +122,19 @@ describeBy(sum.zc$obs.het.ind, sum.zc$pop2, mat=TRUE, digits=3)
 #Fis and Gene diversities: Calculates for each locus as well as population. 
 library(genepop)
 
-#First you will need to convert your vcf file into a genepop file using PGD spider. once that is done, rename the individuals using text wrangler so that the first characters are the population. 
+#First you will need to convert your vcf file into a genepop file using PGD spider. once that is done, 
+#rename the individuals using text wrangler so that the first characters are the population. 
 
-#run genedivFis function for each dataset. The resulting file will be saved in your working directory and at the very bottom will have values for Fis, 1-Qinter and 1-Qintra gene diversities. 
+#run genedivFis function for each dataset. The resulting file will be saved in your working directory and 
+#at the very bottom of the results file will have values for Fis (weir and cockeram), 1-Qinter and 
+#1-Qintra gene diversities.
 zczc125.gp.Fis<-genedivFis("./zczc125_genepop.txt")
 zczc125.pop1.gp.Fis<-genedivFis("./zczc125.pop1.genepop.txt")
 zczc125.pop2.gp.Fis<-genedivFis("./zczc125.pop2.genepop.txt")
 
 ####Adegenet####
-#Calculate Hs for each population using genpop files (Adegenet). Can also use to calculate observed heterozygosity for each population
+#Calculate Hs for each population using genpop files (Adegenet). Can also use to calculate observed 
+#heterozygosity for each population
 
 library(adegenet)
 
@@ -121,7 +153,82 @@ lapply(seppop(zczc125.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
 lapply(seppop(zczc125.pop1.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
 lapply(seppop(zczc125.pop2.gi), function(e) mean(summary(e)$Hobs, na.rm = TRUE))
 
+#Statistically compare two populations Hs values with a monte carlo test:
+Hs.test(zczc125.gi[pop="Atlantic"], zczc125.gi[pop="Indopacific"])
 
+#rcompanion is a very handy tool that allows you to calculate groupwise means and calculate 
+#confidence intervals by boostrapping. This is handy for calculating means and confidence intervales
+#for summary statistics that are calculated per locus for each population. I will use observed heterozygosty
+calculated by hierfstat for an example dataset. 
 
+library(rcompanion)
+
+#Let's first look at the ho data. this dataframe has three columns (one for each population) and a row for
+#each SNP locus. Values are the population specific, per locus observed heterozygosity. 
+
+zczc125.hfstat.ho<-zczc125.hfstat.basicstats$Ho
+head(zczc125.hfstat.ho)
+#         Atlantic Indopacific Mediterranean
+#X33_206    0.0364      0.1111             0
+#X218_216   0.0727      0.0000             0
+#X293_33    0.0185      0.1389             0
+#X329_250   0.0364      0.1429             0
+#X363_233   0.2727      0.1944             0
+#X490_251   0.0370      0.0278             0
+
+#To run in rcompanion, the data need to be transposed so thatt he columns are stacked. This can easily be done with the melt() function in the reshape package
+
+library(reshape)
+zczc125.hfstat.ho.melt<-melt(zczc125.hfstat.ho)
+head(zczc125.hfstat.ho.melt
+#        X1       X2  value
+#1  X33_206 Atlantic 0.0364
+#2 X218_216 Atlantic 0.0727
+#3  X293_33 Atlantic 0.0185
+#4 X329_250 Atlantic 0.0364
+#5 X363_233 Atlantic 0.2727
+#6 X490_251 Atlantic 0.0370
+
+tail(zczc125.hfstat.ho.melt
+#                X1            X2  value
+#75163 X1799744_207 Mediterranean 0.0294
+#75164 X1799852_199 Mediterranean 0.3214
+#75165  X1799971_78 Mediterranean 0.0000
+#75166  X1800125_58 Mediterranean 0.0000
+#75167  X1801055_70 Mediterranean 0.2424
+#75168  X1801854_72 Mediterranean 0.2800
+
+#you can use the dataframe as is now or you can clean it up by removing unnecessary columns and changing 
+#column names. 
+
+zczc125.hfstat.ho.melt<-zczc125.ho.melt[,2:3]
+colnames(zczc125.hfstat.ho.melt)<-c("pop", "ho")
+head(zczc125.hfstat.ho.melt)
+#       pop     ho
+#1 Atlantic 0.0364
+#2 Atlantic 0.0727
+#3 Atlantic 0.0185
+#4 Atlantic 0.0364
+#5 Atlantic 0.2727
+#6 Atlantic 0.0370
+
+#Now we can use rcompanion to calculate means and 95% confidence intervals for each population
+#confidence is set at 95% with conf=0.95, 1000 bootstraps set with R=1000. In the output, Percentile.lower 
+#and Percentile.upper and the lower and upper 95% bounds. 
+mean.zczc125.ho.melt=groupwiseMean(ho~pop, data=zczc125.hfstat.ho.melt, conf=0.95, R=1000, percentile=TRUE, bca=FALSE, digits=3)
+mean.zczc125.ho.melt
+# pop     n  Mean Conf.level Trad.lower Trad.upper Percentile.lower Percentile.upper
+# 1      Atlantic 25056 0.118       0.95     0.1170     0.1200            0.117           0.1200
+# 2   Indopacific 25056 0.116       0.95     0.1140     0.1180            0.114           0.1180
+# 3 Mediterranean 25056 0.085       0.95     0.0831     0.0868            0.083           0.0869
+
+#This can be nicely plotted using ggplot to visualise the spread of the confidence intervals:
+library(ggplot2)
+ggplot(mean.zczc125.ho.melt, aes(x = pop,y = Mean)) +
+  geom_errorbar(aes(ymin = Percentile.lower,ymax = Percentile.upper), width = 0.05, size  = 0.5) +
+  geom_point(shape = 15, size  = 4) +
+  theme_bw() +
+  theme(axis.title= element_text(face="bold")) +
+  ylab("Observed Heterozygosity") + xlab(NULL)
 
 
